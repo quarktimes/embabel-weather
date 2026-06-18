@@ -82,6 +82,27 @@
             <span th:if="${result.aiAnalysis != null}">| AI: DeepSeek</span>
             <span>| 耗时: <span th:text="${result.processingTimeMs} + 'ms'">0ms</span></span>
         </div>
+
+        <!-- 👣 执行详情 -->
+        <div class="audit-section" th:if="${result.auditRecords != null and !result.auditRecords.isEmpty()}">
+            <div class="audit-toggle" onclick="toggleAudit()">
+                <span id="auditArrow">▶</span>
+                👣 查看执行详情
+                <span class="audit-traceid" th:text="'#' + ${result.traceId}">trace-id</span>
+            </div>
+            <div id="auditContent" class="audit-content" style="display:none">
+                <div class="audit-step" th:each="r : ${result.auditRecords}"
+                     th:classappend="${r.success} ? 'audit-step' : 'audit-step audit-step-error'">
+                    <span class="step-status" th:text="${r.success} ? '✅' : '❌'">✅</span>
+                    <span class="step-order" th:text="r.stepOrder">1</span>
+                    <span class="step-name" th:text="${r.stepName}">parseQuery</span>
+                    <span class="step-arrow">→</span>
+                    <span class="step-output" th:text="${r.output}">输出</span>
+                    <span class="step-ms" th:text="${r.durationMs} + 'ms'">0ms</span>
+                    <span class="step-error" th:if="${!r.success}" th:text="${r.errorMessage}">错误</span>
+                </div>
+            </div>
+        </div>
     </div>
 
     <!-- 结果为空且有查询（可能出错） -->
@@ -90,5 +111,18 @@
     </div>
 </div>
 
+<script>
+function toggleAudit() {
+    var content = document.getElementById('auditContent');
+    var arrow = document.getElementById('auditArrow');
+    if (content.style.display === 'none') {
+        content.style.display = 'block';
+        arrow.textContent = '▼';
+    } else {
+        content.style.display = 'none';
+        arrow.textContent = '▶';
+    }
+}
+</script>
 </body>
 </html>

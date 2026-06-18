@@ -273,6 +273,105 @@ body {
     color: #2d3748;
 }
 
+/* ── 执行详情 ── */
+.audit-section {
+    margin-top: 16px;
+    border-top: 1px solid #e2e8f0;
+    padding-top: 12px;
+}
+
+.audit-toggle {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    cursor: pointer;
+    font-size: 13px;
+    color: #718096;
+    user-select: none;
+    padding: 4px 0;
+}
+
+.audit-toggle:hover {
+    color: #4a5568;
+}
+
+#auditArrow {
+    font-size: 10px;
+    width: 12px;
+}
+
+.audit-traceid {
+    font-size: 11px;
+    color: #a0aec0;
+    font-family: monospace;
+    margin-left: auto;
+}
+
+.audit-content {
+    margin-top: 8px;
+}
+
+.audit-step {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 13px;
+    padding: 4px 8px;
+    border-radius: 6px;
+    background: #f7fafc;
+    margin-bottom: 4px;
+    flex-wrap: wrap;
+}
+
+.audit-step-error {
+    background: #fff5f5;
+}
+
+.step-status {
+    font-size: 12px;
+}
+
+.step-order {
+    color: #a0aec0;
+    font-size: 11px;
+    font-weight: 600;
+    min-width: 16px;
+}
+
+.step-name {
+    font-weight: 600;
+    color: #4a5568;
+    min-width: 70px;
+}
+
+.step-arrow {
+    color: #cbd5e0;
+    font-size: 11px;
+}
+
+.step-output {
+    color: #2d3748;
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 12px;
+}
+
+.step-ms {
+    color: #a0aec0;
+    font-size: 11px;
+    font-family: monospace;
+    white-space: nowrap;
+}
+
+.step-error {
+    color: #e53e3e;
+    font-size: 12px;
+    width: 100%;
+    padding-left: 28px;
+}
+
 /* ── 底部信息 ── */
 .footer-info {
     font-size: 12px;

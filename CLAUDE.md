@@ -62,6 +62,17 @@ public enum ErrorCode {
 - LLM_API_ERROR / AGENT_ERROR → **静默降级**：跳过 AI 分析，只展示数据卡片
 - 其他错误 → 向用户展示错误信息
 
+## 关键架构决策
+
+### 为什么用 embabel-agent-starter-deepseek 而不是 embabel-agent-starter
+- `embabel-agent-starter` 是通用启动器，不注册具体 LLM 模型 → AgentPlatform 初始化报 `Default LLM not found`
+- `embabel-agent-starter-deepseek` 自动注册 `deepseek-chat` 和 `deepseek-reasoner` 到 ModelProvider
+- 避免手动配置 Spring AI 版本（Embabel 0.3.5 内嵌 Spring AI 1.1.4，外部添加其他版本会冲突）
+
+### 参数校验策略
+- 参数格式校验（空值、长度、格式）→ Controller 层
+- 业务约束校验（状态、余额、时间逻辑）→ Service 层
+
 ## 构建与运行
 ```bash
 # 开发运行
