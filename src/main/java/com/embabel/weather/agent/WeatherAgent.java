@@ -1,5 +1,6 @@
 package com.embabel.weather.agent;
 
+import com.embabel.agent.api.common.Ai;
 import com.embabel.weather.client.OpenWeatherClient;
 import com.embabel.weather.model.DayForecast;
 import com.embabel.weather.model.GeoLocation;
@@ -8,42 +9,40 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
-import org.springframework.web.client.RestClient;
 
 import java.util.List;
 import java.util.stream.Collectors;
 
 /**
- * 3 天天气预报助手
+ * Embabel Agent — 3 天天气预报助手
  * <p>
  * 流程：parseQuery → geocode → forecast → analyze
- * parseQuery / analyze 调用 DeepSeek API（OpenAI 兼容协议）
+ * 每一步在完成时记录审计轨迹（页面可见）。
+ * LLM 调用通过 Embabel {@link Ai} 接口路由到 DeepSeek。
  */
 @Slf4j
 @Component
 public class WeatherAgent {
 
-    private static final String DEEPSEEK_URL = "https://api.deepseek.com/chat/completions";
-
     @Autowired
     private OpenWeatherClient openWeatherClient;
 
     @Autowired
+    private Ai ai;
+
+    @Autowired
     private ObjectMapper objectMapper;
 
-    @Value("${DEEPSEEK_API_KEY}")
-    private String deepseekApiKey;
-
-    private final RestClient restClient = RestClient.create();
+    @Autowired
+    private AgentAuditService auditService;
 
     // ═══════════════════════════════════════════════
     //  入口方法
     // ═══════════════════════════════════════════════
 
     /**
-     * 执行完整的天气查询流程
+     * 执行完整的天气查询 Agent 流程
      *
      * @param userInput 用户自然语言输入
      * @return WeatherContext 包含所有中间结果
@@ -51,45 +50,64 @@ public class WeatherAgent {
     public WeatherContext execute(String userInput) {
         WeatherContext ctx = new WeatherContext();
         ctx.setOriginalInput(userInput);
-        long start = System.currentTimeMillis();
+        String traceId = auditService.startTrace(userInput);
+        ctx.setTraceId(traceId);
 
         try {
-            // Step 1: 解析自然语言
+            // Step 1: 解析自然语言（纯城市名跳过 LLM，否则调 DeepSeek）
+            long t1 = System.currentTimeMillis();
             ParsedQuery parsed = parseQuery(userInput);
+            long d1 = System.currentTimeMillis() - t1;
             ctx.setParsedQuery(parsed);
-            log.info("[Agent] parseQuery → city={}, time={}, intent={}",
-                    parsed.cityName(), parsed.timeContext(), parsed.intent());
+            auditService.record(traceId, 1, "parseQuery",
+                    userInput, parsed.cityName() + " / " + parsed.timeContext() + " / " + parsed.intent(), d1, true, null);
 
             if (!parsed.isValid()) {
-                ctx.setErrorMessage("未能识别出城市名，请直接输入城市名，如「北京」");
+                String err = "未能识别出城市名，请直接输入城市名，如「北京」";
+                ctx.setErrorMessage(err);
+                auditService.record(traceId, 1, "parseQuery", userInput, null, d1, false, err);
                 return ctx;
             }
 
             // Step 2: 地理编码
+            long t2 = System.currentTimeMillis();
             GeoLocation geo = openWeatherClient.geocoding(parsed.cityName());
+            long d2 = System.currentTimeMillis() - t2;
             ctx.setCoordinates(geo);
-            log.info("[Agent] geocode → {} ({}, {})", geo.name(), geo.lat(), geo.lon());
+            auditService.record(traceId, 2, "geocode",
+                    parsed.cityName(), geo.name() + " (" + geo.lat() + ", " + geo.lon() + ")", d2, true, null);
 
             // Step 3: 获取 3 天预报
+            long t3 = System.currentTimeMillis();
             List<DayForecast> forecasts = openWeatherClient.forecast(geo.lat(), geo.lon());
+            long d3 = System.currentTimeMillis() - t3;
             ctx.setForecasts(forecasts);
-            log.info("[Agent] forecast → {} 天数据", forecasts.size());
+            auditService.record(traceId, 3, "forecast",
+                    geo.name() + " 坐标", forecasts.size() + " 天数据", d3, true, null);
 
             // Step 4: AI 分析
+            long t4 = System.currentTimeMillis();
             String analysis = generateAnalysis(parsed, forecasts);
+            long d4 = System.currentTimeMillis() - t4;
             ctx.setAiAnalysis(analysis);
-            log.info("[Agent] analyze → 完成");
+            String analysisPreview = analysis != null
+                    ? analysis.substring(0, Math.min(analysis.length(), 60)) + "..."
+                    : "无分析";
+            auditService.record(traceId, 4, "analyze",
+                    parsed.cityName() + " 天气数据", analysisPreview, d4, true, null);
 
         } catch (IllegalArgumentException e) {
             log.warn("[Agent] 城市未找到: {}", e.getMessage());
             ctx.setErrorMessage(e.getMessage());
+            auditService.record(traceId, 0, "error", userInput, null, 0, false, e.getMessage());
         } catch (Exception e) {
             log.error("[Agent] 执行异常", e);
             ctx.setErrorMessage("天气查询暂时不可用，请稍后重试");
+            auditService.record(traceId, 0, "error", userInput, null, 0, false, e.getMessage());
         }
 
-        long elapsed = System.currentTimeMillis() - start;
-        log.info("[Agent] 总耗时 {}ms", elapsed);
+        // 附加审计记录到上下文（页面展示用）
+        ctx.setAuditRecords(auditService.getTrace(traceId));
         return ctx;
     }
 
@@ -97,18 +115,12 @@ public class WeatherAgent {
     //  Actions
     // ═══════════════════════════════════════════════
 
-    /**
-     * Action 1: 自然语言 → 结构化解析
-     * <p>
-     * 调用 DeepSeek 从用户输入中提取城市名、时间、意图。
-     */
+    /** 自然语言 → 结构化解析（纯城市名跳过 LLM） */
     public ParsedQuery parseQuery(String userInput) {
         if (userInput == null || userInput.isBlank()) {
             return ParsedQuery.unknown(userInput);
         }
-
         String trimmed = userInput.trim();
-        // 纯城市名直接作为城市名，无需 LLM
         if (isPlainCityName(trimmed)) {
             return new ParsedQuery(trimmed, trimmed, "today", "forecast");
         }
@@ -128,26 +140,22 @@ public class WeatherAgent {
                 """.formatted(userInput);
 
         try {
-            String jsonText = callDeepSeek(prompt);
+            String jsonText = ai.withDefaultLlm().generateText(prompt);
             JsonNode json = objectMapper.readTree(extractJson(jsonText));
             String city = getJsonText(json, "city");
             String time = getJsonText(json, "time");
             String intent = getJsonText(json, "intent");
-
             if (city == null || city.isBlank()) {
                 return new ParsedQuery(userInput, trimmed, time, intent);
             }
             return new ParsedQuery(userInput, city, time, intent);
-
         } catch (Exception e) {
-            log.warn("[Agent] LLM 解析失败，将整段输入作为城市名: {}", e.getMessage());
+            log.warn("[Agent] LLM 解析失败: {}", e.getMessage());
             return new ParsedQuery(userInput, trimmed, "today", "forecast");
         }
     }
 
-    /**
-     * Action 4: 生成 AI 天气分析 + 下雨提醒
-     */
+    /** 生成 AI 天气分析 + 下雨提醒 */
     public String generateAnalysis(ParsedQuery query, List<DayForecast> forecasts) {
         if (forecasts == null || forecasts.isEmpty()) return null;
 
@@ -179,68 +187,18 @@ public class WeatherAgent {
                 """.formatted(query.cityName(), forecastText, query.originalInput());
 
         try {
-            return callDeepSeek(prompt);
+            return ai.withDefaultLlm().generateText(prompt);
         } catch (Exception e) {
-            log.warn("[Agent] LLM 分析失败，使用默认文本: {}", e.getMessage());
-            if (anyRain) {
-                return "未来 3 天有雨，出门记得带伞 🌂";
-            }
+            log.warn("[Agent] LLM 分析失败: {}", e.getMessage());
+            if (anyRain) return "未来 3 天有雨，出门记得带伞 🌂";
             return null;
         }
     }
 
     // ═══════════════════════════════════════════════
-    //  DeepSeek API 调用
-    // ═══════════════════════════════════════════════
-
-    /**
-     * 调用 DeepSeek Chat API（OpenAI 兼容协议）
-     */
-    private String callDeepSeek(String userPrompt) {
-        var request = new DeepSeekRequest("deepseek-chat", userPrompt, 0.7, 2000);
-
-        DeepSeekResponse response = restClient.post()
-                .uri(DEEPSEEK_URL)
-                .header("Authorization", "Bearer " + deepseekApiKey)
-                .header("Content-Type", "application/json")
-                .body(request)
-                .retrieve()
-                .body(DeepSeekResponse.class);
-
-        if (response != null && response.choices() != null && !response.choices().isEmpty()) {
-            return response.choices().get(0).message().content();
-        }
-        throw new RuntimeException("DeepSeek 返回空结果");
-    }
-
-    // ─── DeepSeek API DTO ───
-
-    private record DeepSeekRequest(
-            String model,
-            List<Message> messages,
-            double temperature,
-            int max_tokens
-    ) {
-        DeepSeekRequest(String model, String userContent, double temperature, int maxTokens) {
-            this(model, List.of(new Message("user", userContent)), temperature, maxTokens);
-        }
-    }
-
-    private record Message(String role, String content) {}
-
-    private record DeepSeekResponse(
-            List<Choice> choices
-    ) {}
-
-    private record Choice(
-            Message message
-    ) {}
-
-    // ═══════════════════════════════════════════════
     //  工具方法
     // ═══════════════════════════════════════════════
 
-    /** 判断是否为纯城市名（中文 2-4 字，不带问句关键词） */
     private boolean isPlainCityName(String text) {
         if (text.length() < 2 || text.length() > 6) return false;
         String[] keywords = {"吗", "么", "？", "?", "天气", "下雨", "温度", "多少", "怎么", "如何"};
@@ -250,7 +208,6 @@ public class WeatherAgent {
         return text.matches("^[\\u4e00-\\u9fff]+$");
     }
 
-    /** 从 LLM 回复中提取 JSON（去除可能的 markdown 包裹） */
     private String extractJson(String text) {
         if (text == null) return "{}";
         String t = text.trim();

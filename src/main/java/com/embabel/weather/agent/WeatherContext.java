@@ -13,10 +13,12 @@ import java.util.List;
 @Data
 public class WeatherContext {
 
+    private String traceId;
     private String originalInput;
     private ParsedQuery parsedQuery;
     private GeoLocation coordinates;
     private List<DayForecast> forecasts;
+    private List<AgentAuditRecord> auditRecords;
     private String aiAnalysis;
     private String errorMessage;
 }

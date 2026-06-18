@@ -1,5 +1,6 @@
 package com.embabel.weather.model;
 
+import com.embabel.weather.agent.AgentAuditRecord;
 import java.util.List;
 
 /**
@@ -11,6 +12,8 @@ import java.util.List;
  * @param aiAnalysis     DeepSeek 生成的分析文字（可能为 null）
  * @param cached         是否来自缓存
  * @param processingTimeMs 处理耗时
+ * @param traceId        追踪 ID
+ * @param auditRecords   执行审计记录（页面展示 Agent 执行链路）
  */
 public record WeatherQueryResult(
         String cityName,
@@ -18,5 +21,7 @@ public record WeatherQueryResult(
         boolean anyRain,
         String aiAnalysis,
         boolean cached,
-        long processingTimeMs
+        long processingTimeMs,
+        String traceId,
+        List<AgentAuditRecord> auditRecords
 ) {}

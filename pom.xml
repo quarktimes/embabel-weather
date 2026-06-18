@@ -34,28 +34,6 @@
             <releases>
                 <enabled>true</enabled>
             </releases>
-            <snapshots>
-                <enabled>false</enabled>
-            </snapshots>
-        </repository>
-        <!-- Embabel 快照仓库（0.3.5 可能是预发布版本） -->
-        <repository>
-            <id>embabel-snapshots</id>
-            <url>https://repo.embabel.com/artifactory/libs-snapshot</url>
-            <releases>
-                <enabled>false</enabled>
-            </releases>
-            <snapshots>
-                <enabled>true</enabled>
-            </snapshots>
-        </repository>
-        <!-- Spring AI 里程碑仓库 -->
-        <repository>
-            <id>spring-milestones</id>
-            <url>https://repo.spring.io/milestone</url>
-            <snapshots>
-                <enabled>false</enabled>
-            </snapshots>
         </repository>
     </repositories>
 
@@ -82,18 +60,39 @@
             <artifactId>caffeine</artifactId>
         </dependency>
 
-        <!-- Embabel Agent 核心 Starter -->
+        <!-- Embabel DeepSeek Starter（注册 DeepSeek 为 LLM 提供者） -->
         <dependency>
             <groupId>com.embabel.agent</groupId>
-            <artifactId>embabel-agent-starter</artifactId>
+            <artifactId>embabel-agent-starter-deepseek</artifactId>
             <version>${embabel.version}</version>
         </dependency>
 
-        <!-- Embabel OpenAI 集成（用于 DeepSeek—兼容 OpenAI 协议） -->
+        <!-- Embabel 可观测性（OpenTelemetry tracing + Micrometer metrics） -->
         <dependency>
             <groupId>com.embabel.agent</groupId>
-            <artifactId>embabel-agent-openai</artifactId>
+            <artifactId>embabel-agent-starter-observability</artifactId>
             <version>${embabel.version}</version>
+        </dependency>
+
+        <!-- Embabel Netty 客户端 -->
+        <dependency>
+            <groupId>com.embabel.agent</groupId>
+            <artifactId>embabel-agent-netty-client-autoconfigure</artifactId>
+            <version>${embabel.version}</version>
+        </dependency>
+
+        <!-- Netty DNS 解析器（macOS native） -->
+        <dependency>
+            <groupId>io.netty</groupId>
+            <artifactId>netty-resolver-dns-native-macos</artifactId>
+            <classifier>osx-aarch_64</classifier>
+        </dependency>
+
+        <!-- OpenTelemetry → Langfuse 导出器 -->
+        <dependency>
+            <groupId>com.quantpulsar</groupId>
+            <artifactId>opentelemetry-exporter-langfuse</artifactId>
+            <version>0.4.0</version>
         </dependency>
 
         <!-- Lombok -->
@@ -131,6 +130,9 @@
                 <configuration>
                     <source>21</source>
                     <target>21</target>
+                    <compilerArgs>
+                        <arg>-parameters</arg>
+                    </compilerArgs>
                     <annotationProcessorPaths>
                         <path>
                             <groupId>org.projectlombok</groupId>

@@ -12,12 +12,40 @@ spring:
     type: caffeine
     caffeine:
       spec: maximumSize=500, expireAfterWrite=10m
-  autoconfigure:
-    exclude:
-      # 排除 Embabel 平台自动配置（LLM 模型发现不起作用，我们自行管理 DeepSeek 调用）
-      - com.embabel.agent.autoconfigure.platform.AgentPlatformAutoConfiguration
 
-# OpenWeather API 配置
+# ── Embabel Agent 配置 ──
+embabel:
+  agent:
+    platform:
+      mode: web
+      auto-start: true
+    models:
+      deepseek:
+        base-url: https://api.deepseek.com
+        api-key: ${DEEPSEEK_API_KEY}
+  models:
+    default-llm: deepseek-chat
+  observability:
+    enabled: true
+    trace-llm-calls: true
+    trace-agent-events: true
+    trace-tool-calls: true
+    trace-http-details: true
+    metrics-enabled: true
+
+# ── OpenTelemetry → Langfuse ──
+# 设置环境变量启用：
+#   OTEL_EXPORTER_OTLP_ENDPOINT=https://cloud.langfuse.com/api/public/otel
+#   OTEL_EXPORTER_OTLP_HEADERS=Authorization=Bearer base64(public_key:secret_key)
+management:
+  tracing:
+    sampling:
+      probability: 1.0
+  otlp:
+    tracing:
+      endpoint: ${OTEL_EXPORTER_OTLP_ENDPOINT:}
+
+# ── OpenWeather API ──
 weather:
   openweather:
     api-key: ${OPENWEATHER_API_KEY}
@@ -25,5 +53,3 @@ weather:
     geo-url: https://api.openweathermap.org/geo/1.0
     units: metric
     lang: zh_cn
-
-# Embabel Agent 配置（自动配置已排除，由代码自行管理 LLM 调用）

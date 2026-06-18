@@ -68,7 +68,7 @@ public class WeatherService {
 
             boolean anyRain = forecasts.stream().anyMatch(DayForecast::hasRain);
             long elapsed = System.currentTimeMillis() - start;
-            return new WeatherQueryResult(geo.name(), forecasts, anyRain, null, false, elapsed);
+            return new WeatherQueryResult(geo.name(), forecasts, anyRain, null, false, elapsed, null, null);
 
         } catch (IllegalArgumentException e) {
             return errorResult("未找到城市：" + rawInput, start);
@@ -85,15 +85,14 @@ public class WeatherService {
         boolean anyRain = ctx.getForecasts().stream().anyMatch(DayForecast::hasRain);
         long elapsed = System.currentTimeMillis() - start;
         return new WeatherQueryResult(cityName, ctx.getForecasts(), anyRain,
-                ctx.getAiAnalysis(), false, elapsed);
+                ctx.getAiAnalysis(), false, elapsed,
+                ctx.getTraceId(), ctx.getAuditRecords());
     }
 
     private WeatherQueryResult errorResult(String message, long start) {
         long elapsed = System.currentTimeMillis() - start;
-        // 用 errorMessage 属性传给上层，但 WeatherQueryResult 没有单独错误字段，
-        // 约定：cityName 为 null、days 为空列表 = 错误，errorMessage 通过 log 查看
-        // Controller 根据 days.isEmpty() 判断
-        return new WeatherQueryResult("", List.of(), false, message, false, elapsed);
+        return new WeatherQueryResult("", List.of(), false, message, false, elapsed,
+                null, null);
     }
 
     /** 判断是否为业务错误（城市不存在等），而非系统异常 */

@@ -25,7 +25,22 @@
       "Bash(gh auth *)",
       "Bash(git init *)",
       "Bash(git add *)",
-      "Bash(git commit -m 'feat: MVP 3天天气预报 + AI下雨提醒 *)"
+      "Bash(git commit -m 'feat: MVP 3天天气预报 + AI下雨提醒 *)",
+      "Bash(gh repo *)",
+      "Bash(git commit *)",
+      "Bash(git push *)",
+      "Bash(curl -s \"https://repo.embabel.com/artifactory/libs-release/com/embabel/agent/embabel-agent-observability/maven-metadata.xml\")",
+      "Bash(mvn dependency:copy -Dartifact=com.embabel.agent:embabel-agent-observability:0.3.5 -DoutputDirectory=/tmp/embabel-check)",
+      "Bash(javap -p embabel-agent-observability-0.3.5.jar)",
+      "Bash(javap -p com/embabel/agent/observability/ObservabilityProperties.class)",
+      "Bash(curl -s \"https://repo.embabel.com/artifactory/libs-release/com/embabel/agent/embabel-agent-starter-deepseek/maven-metadata.xml\")",
+      "Bash(curl -s \"https://repo.embabel.com/artifactory/libs-release/com/embabel/agent/embabel-agent-starter-deepseek/0.3.1/embabel-agent-starter-deepseek-0.3.1.pom\")",
+      "Bash(curl -s \"https://repo.embabel.com/artifactory/libs-release/com/embabel/agent/embabel-agent-starter-deepseek/0.3.5/embabel-agent-starter-deepseek-0.3.5.pom\")",
+      "Bash(curl -s \"https://repo.maven.apache.org/maven2/com/quantpulsar/opentelemetry-exporter-langfuse/maven-metadata.xml\")",
+      "Bash(curl -s \"https://repo.embabel.com/artifactory/libs-release/com/embabel/agent/embabel-agent-netty-client-autoconfigure/maven-metadata.xml\")",
+      "Bash(curl -s \"https://repo.embabel.com/artifactory/libs-release/com/embabel/agent/embabel-agent-starter-observability/maven-metadata.xml\")",
+      "Bash(mvn test *)",
+      "Bash(mvn dependency:copy -Dartifact=com.embabel.agent:embabel-agent-deepseek-autoconfigure:0.3.5 -DoutputDirectory=/tmp/embabel-ds)"
     ]
   }
 }
