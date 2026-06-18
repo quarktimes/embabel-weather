@@ -24,8 +24,8 @@ Java 21 + Spring Boot 3.5 + Embabel 0.3.5 的 AI 天气预报 Web 应用。
 - model/ — 领域模型 Record
 - client/ — 外部 API 调用
   - dto/ — 外部 API 请求/响应 DTO
-- agent/ — Embabel Agent + Actions + WeatherContext
-- service/ — 业务服务层
+- agent/ — GOAP Agent（4 个独立 @Action，通过参数/返回类型自动串联）
+- service/ — 通过 AgentPlatform 调用 Agent + 降级兜底
 - controller/ — Web 控制器
 
 ## DTO 规范
@@ -40,9 +40,9 @@ Java 21 + Spring Boot 3.5 + Embabel 0.3.5 的 AI 天气预报 Web 应用。
 - Lombok 只在配置/工具类中使用，不用于业务模型
 
 ## 命名规范
-- Agent Action 类: XxxAction (如 GeocodeAction)
+- Agent Action 方法: 动词开头 (extractCity, geocode, forecast, reply)
 - Controller 方法: 按功能命名 (queryWeather, showHome)
-- Service 方法: queryWeather, getCachedOrFetch
+- Service 方法: queryWeather, fallback
 
 ## 错误码设计
 
@@ -72,6 +72,18 @@ public enum ErrorCode {
 ### 参数校验策略
 - 参数格式校验（空值、长度、格式）→ Controller 层
 - 业务约束校验（状态、余额、时间逻辑）→ Service 层
+
+### GOAP 自主规划（不是 Workflow）
+- **旧（Workflow）**: Agent 内有 `execute()` 方法硬编码步骤顺序
+- **新（GOAP）**: 4 个独立 `@Action`，无编排方法
+- 引擎根据 Action 的**参数类型**和**返回类型**自动串联：
+  ```
+  UserQuery → extractCity → ParsedQuery → geocode → GeoLocation
+    → forecast → List<DayForecast> → reply → WeatherQueryResult
+  ```
+- Service 通过 `AgentPlatform` 执行 agent，不直接调用 agent 方法
+- 每步执行完引擎会重新规划下一步（不一次定型）
+- 参考教程: https://github.com/zhangjessey/embabel-java-agent-tutorial
 
 ## 构建与运行
 ```bash
