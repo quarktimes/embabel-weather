@@ -1,6 +1,10 @@
 package com.embabel.weather.agent;
 
+import com.embabel.agent.api.annotation.AchievesGoal;
+import com.embabel.agent.api.annotation.Action;
+import com.embabel.agent.api.annotation.Agent;
 import com.embabel.agent.api.common.Ai;
+import com.embabel.agent.api.common.OperationContext;
 import com.embabel.weather.client.OpenWeatherClient;
 import com.embabel.weather.model.DayForecast;
 import com.embabel.weather.model.GeoLocation;
@@ -12,17 +16,13 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
+import java.util.function.Function;
+import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
-/**
- * Embabel Agent — 3 天天气预报助手
- * <p>
- * 流程：parseQuery → geocode → forecast → analyze
- * 每一步在完成时记录审计轨迹（页面可见）。
- * LLM 调用通过 Embabel {@link Ai} 接口路由到 DeepSeek。
- */
 @Slf4j
 @Component
+@Agent(name = "weatherAgent", description = "3天天气预报助手，查询天气并提醒带伞")
 public class WeatherAgent {
 
     @Autowired
@@ -38,85 +38,63 @@ public class WeatherAgent {
     private AgentAuditService auditService;
 
     // ═══════════════════════════════════════════════
-    //  入口方法
+    //  Goal
     // ═══════════════════════════════════════════════
 
-    /**
-     * 执行完整的天气查询 Agent 流程
-     *
-     * @param userInput 用户自然语言输入
-     * @return WeatherContext 包含所有中间结果
-     */
+    /** Service 调用的快捷入口（无 OperationContext 时） */
     public WeatherContext execute(String userInput) {
-        WeatherContext ctx = new WeatherContext();
-        ctx.setOriginalInput(userInput);
+        return execute(null, userInput);
+    }
+
+    @Action(description = "回答用户天气查询")
+    @AchievesGoal(description = "回答用户天气查询")
+    public WeatherContext execute(OperationContext ctx, String userInput) {
+        WeatherContext result = new WeatherContext();
+        result.setOriginalInput(userInput);
         String traceId = auditService.startTrace(userInput);
-        ctx.setTraceId(traceId);
+        result.setTraceId(traceId);
 
         try {
-            // Step 1: 解析自然语言（纯城市名跳过 LLM，否则调 DeepSeek）
-            long t1 = System.currentTimeMillis();
-            ParsedQuery parsed = parseQuery(userInput);
-            long d1 = System.currentTimeMillis() - t1;
-            ctx.setParsedQuery(parsed);
-            auditService.record(traceId, 1, "parseQuery",
-                    userInput, parsed.cityName() + " / " + parsed.timeContext() + " / " + parsed.intent(), d1, true, null);
-
+            ParsedQuery parsed = auditParsedQuery(ctx, userInput, traceId);
+            result.setParsedQuery(parsed);
             if (!parsed.isValid()) {
-                String err = "未能识别出城市名，请直接输入城市名，如「北京」";
-                ctx.setErrorMessage(err);
-                auditService.record(traceId, 1, "parseQuery", userInput, null, d1, false, err);
-                return ctx;
+                result.setErrorMessage("未能识别出城市名，请直接输入城市名，如「北京」");
+                return result;
             }
 
-            // Step 2: 地理编码
-            long t2 = System.currentTimeMillis();
-            GeoLocation geo = openWeatherClient.geocoding(parsed.cityName());
-            long d2 = System.currentTimeMillis() - t2;
-            ctx.setCoordinates(geo);
-            auditService.record(traceId, 2, "geocode",
-                    parsed.cityName(), geo.name() + " (" + geo.lat() + ", " + geo.lon() + ")", d2, true, null);
+            GeoLocation geo = auditStep(traceId, 2, "geocode", parsed.cityName(),
+                    () -> geocode(ctx, parsed.cityName()),
+                    g -> g.name() + " (" + g.lat() + ", " + g.lon() + ")");
+            result.setCoordinates(geo);
 
-            // Step 3: 获取 3 天预报
-            long t3 = System.currentTimeMillis();
-            List<DayForecast> forecasts = openWeatherClient.forecast(geo.lat(), geo.lon());
-            long d3 = System.currentTimeMillis() - t3;
-            ctx.setForecasts(forecasts);
-            auditService.record(traceId, 3, "forecast",
-                    geo.name() + " 坐标", forecasts.size() + " 天数据", d3, true, null);
+            List<DayForecast> forecasts = auditStep(traceId, 3, "forecast", geo.name(),
+                    () -> forecast(ctx, geo.lat(), geo.lon()),
+                    f -> f.size() + " 天数据");
+            result.setForecasts(forecasts);
 
-            // Step 4: AI 分析
-            long t4 = System.currentTimeMillis();
-            String analysis = generateAnalysis(parsed, forecasts);
-            long d4 = System.currentTimeMillis() - t4;
-            ctx.setAiAnalysis(analysis);
-            String analysisPreview = analysis != null
-                    ? analysis.substring(0, Math.min(analysis.length(), 60)) + "..."
-                    : "无分析";
-            auditService.record(traceId, 4, "analyze",
-                    parsed.cityName() + " 天气数据", analysisPreview, d4, true, null);
+            String analysis = auditStep(traceId, 4, "analyze", parsed.cityName() + " 天气数据",
+                    () -> analyze(ctx, parsed, forecasts),
+                    a -> a != null ? a.substring(0, Math.min(a.length(), 60)) + "..." : "无分析");
+            result.setAiAnalysis(analysis);
 
         } catch (IllegalArgumentException e) {
             log.warn("[Agent] 城市未找到: {}", e.getMessage());
-            ctx.setErrorMessage(e.getMessage());
-            auditService.record(traceId, 0, "error", userInput, null, 0, false, e.getMessage());
+            result.setErrorMessage(e.getMessage());
         } catch (Exception e) {
             log.error("[Agent] 执行异常", e);
-            ctx.setErrorMessage("天气查询暂时不可用，请稍后重试");
-            auditService.record(traceId, 0, "error", userInput, null, 0, false, e.getMessage());
+            result.setErrorMessage("天气查询暂时不可用，请稍后重试");
         }
 
-        // 附加审计记录到上下文（页面展示用）
-        ctx.setAuditRecords(auditService.getTrace(traceId));
-        return ctx;
+        result.setAuditRecords(auditService.getTrace(traceId));
+        return result;
     }
 
     // ═══════════════════════════════════════════════
-    //  Actions
+    //  GOAP 子步骤
     // ═══════════════════════════════════════════════
 
-    /** 自然语言 → 结构化解析（纯城市名跳过 LLM） */
-    public ParsedQuery parseQuery(String userInput) {
+    @Action(description = "从自然语言中提取城市名、时间和意图")
+    public ParsedQuery parseQuery(OperationContext ctx, String userInput) {
         if (userInput == null || userInput.isBlank()) {
             return ParsedQuery.unknown(userInput);
         }
@@ -155,8 +133,18 @@ public class WeatherAgent {
         }
     }
 
-    /** 生成 AI 天气分析 + 下雨提醒 */
-    public String generateAnalysis(ParsedQuery query, List<DayForecast> forecasts) {
+    @Action(description = "将城市名转换为经纬度坐标")
+    public GeoLocation geocode(OperationContext ctx, String cityName) {
+        return openWeatherClient.geocoding(cityName);
+    }
+
+    @Action(description = "获取 3 天天气预报")
+    public List<DayForecast> forecast(OperationContext ctx, double lat, double lon) {
+        return openWeatherClient.forecast(lat, lon);
+    }
+
+    @Action(description = "生成 AI 天气分析和下雨提醒")
+    public String analyze(OperationContext ctx, ParsedQuery query, List<DayForecast> forecasts) {
         if (forecasts == null || forecasts.isEmpty()) return null;
 
         boolean anyRain = forecasts.stream().anyMatch(DayForecast::hasRain);
@@ -192,6 +180,47 @@ public class WeatherAgent {
             log.warn("[Agent] LLM 分析失败: {}", e.getMessage());
             if (anyRain) return "未来 3 天有雨，出门记得带伞 🌂";
             return null;
+        }
+    }
+
+    // ═══════════════════════════════════════════════
+    //  审计模板
+    // ═══════════════════════════════════════════════
+
+    /** parseQuery 特殊处理（含校验 + 错误审计） */
+    private ParsedQuery auditParsedQuery(OperationContext ctx, String userInput, String traceId) {
+        long start = System.currentTimeMillis();
+        try {
+            ParsedQuery parsed = parseQuery(ctx, userInput);
+            String output = parsed.cityName() + " / " + parsed.timeContext() + " / " + parsed.intent();
+            auditService.record(traceId, 1, "parseQuery", userInput, output,
+                    System.currentTimeMillis() - start, true, null);
+
+            if (!parsed.isValid()) {
+                auditService.record(traceId, 1, "parseQuery", userInput, null,
+                        System.currentTimeMillis() - start, false, "未能识别出城市名");
+            }
+            return parsed;
+        } catch (Exception e) {
+            auditService.record(traceId, 1, "parseQuery", userInput, null,
+                    System.currentTimeMillis() - start, false, e.getMessage());
+            throw e;
+        }
+    }
+
+    private <T> T auditStep(String traceId, int order, String stepName, String input,
+                            Supplier<T> action, Function<T, String> outputFormatter) {
+        long start = System.currentTimeMillis();
+        try {
+            T result = action.get();
+            auditService.record(traceId, order, stepName, input,
+                    outputFormatter.apply(result),
+                    System.currentTimeMillis() - start, true, null);
+            return result;
+        } catch (Exception e) {
+            auditService.record(traceId, order, stepName, input, null,
+                    System.currentTimeMillis() - start, false, e.getMessage());
+            throw e;
         }
     }
 

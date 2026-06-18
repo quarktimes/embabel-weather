@@ -42,7 +42,14 @@
       "Bash(mvn test *)",
       "Bash(mvn dependency:copy -Dartifact=com.embabel.agent:embabel-agent-deepseek-autoconfigure:0.3.5 -DoutputDirectory=/tmp/embabel-ds)",
       "Bash(mvn dependency:copy -Dartifact=com.quantpulsar:opentelemetry-exporter-langfuse:0.4.0 -DoutputDirectory=/tmp/quantpulsar)",
-      "Bash(javap -c -p com/quantpulsar/opentelemetry/langfuse/LangfuseExporterAutoConfiguration.class)"
+      "Bash(javap -c -p com/quantpulsar/opentelemetry/langfuse/LangfuseExporterAutoConfiguration.class)",
+      "Bash(javap -s com/embabel/agent/api/annotation/Agent.class)",
+      "Bash(javap -p com/embabel/agent/spi/config/spring/AgentPlatformProperties.class)",
+      "Bash(javap -p com/embabel/agent/core/deployment/AgentDeployer.class)",
+      "Bash(javap -p com/embabel/agent/api/annotation/Action.class)",
+      "Bash(javap -p com/embabel/agent/api/annotation/AchievesGoal.class)",
+      "Bash(javap -p com/embabel/agent/api/annotation/Agent.class)",
+      "Bash(javap -p com/embabel/agent/api/common/OperationContext.class)"
     ]
   }
 }

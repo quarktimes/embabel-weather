@@ -19,6 +19,9 @@ embabel:
     platform:
       mode: web
       auto-start: true
+      scanning:
+        annotation: true
+        bean: false
     models:
       deepseek:
         base-url: https://api.deepseek.com
