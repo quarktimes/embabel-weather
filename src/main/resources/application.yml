@@ -47,7 +47,7 @@ management:
     public-key: ${LANGFUSE_PUBLIC_KEY:}
     secret-key: ${LANGFUSE_SECRET_KEY:}
     endpoint: ${LANGFUSE_ENDPOINT:https://us.cloud.langfuse.com/api/public/otel}
-    embabel-only: true
+    embabel-only: false
 
 # ── OpenWeather API ──
 weather:

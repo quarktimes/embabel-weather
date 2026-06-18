@@ -40,7 +40,9 @@
       "Bash(curl -s \"https://repo.embabel.com/artifactory/libs-release/com/embabel/agent/embabel-agent-netty-client-autoconfigure/maven-metadata.xml\")",
       "Bash(curl -s \"https://repo.embabel.com/artifactory/libs-release/com/embabel/agent/embabel-agent-starter-observability/maven-metadata.xml\")",
       "Bash(mvn test *)",
-      "Bash(mvn dependency:copy -Dartifact=com.embabel.agent:embabel-agent-deepseek-autoconfigure:0.3.5 -DoutputDirectory=/tmp/embabel-ds)"
+      "Bash(mvn dependency:copy -Dartifact=com.embabel.agent:embabel-agent-deepseek-autoconfigure:0.3.5 -DoutputDirectory=/tmp/embabel-ds)",
+      "Bash(mvn dependency:copy -Dartifact=com.quantpulsar:opentelemetry-exporter-langfuse:0.4.0 -DoutputDirectory=/tmp/quantpulsar)",
+      "Bash(javap -c -p com/quantpulsar/opentelemetry/langfuse/LangfuseExporterAutoConfiguration.class)"
     ]
   }
 }
