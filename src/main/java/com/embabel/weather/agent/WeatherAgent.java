@@ -9,27 +9,31 @@ import com.embabel.weather.client.OpenWeatherClient;
 import com.embabel.weather.model.DayForecast;
 import com.embabel.weather.model.GeoLocation;
 import com.embabel.weather.model.ParsedQuery;
+import com.embabel.weather.model.WeatherQueryResult;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.stereotype.Component;
 
 import java.util.List;
-import java.util.function.Function;
-import java.util.function.Supplier;
+import java.util.Objects;
 import java.util.stream.Collectors;
 
+/**
+ * Embabel Agent — GOAP 自主规划天气预报
+ * <p>
+ * 引擎根据 Action 的输入/输出类型自动串联：
+ *   UserQuery → extractCity → geocode → forecast → reply
+ */
 @Slf4j
-@Component
 @Agent(name = "weatherAgent", description = "3天天气预报助手，查询天气并提醒带伞")
 public class WeatherAgent {
 
-    @Autowired
-    private OpenWeatherClient openWeatherClient;
+    /** 用户输入的包装类型 —— GOAP 引擎以此启动链路 */
+    public record UserQuery(String text) {}
 
     @Autowired
-    private Ai ai;
+    private OpenWeatherClient openWeatherClient;
 
     @Autowired
     private ObjectMapper objectMapper;
@@ -38,69 +42,28 @@ public class WeatherAgent {
     private AgentAuditService auditService;
 
     // ═══════════════════════════════════════════════
-    //  Goal
-    // ═══════════════════════════════════════════════
-
-    /** Service 调用的快捷入口（无 OperationContext 时） */
-    public WeatherContext execute(String userInput) {
-        return execute(null, userInput);
-    }
-
-    @Action(description = "回答用户天气查询")
-    @AchievesGoal(description = "回答用户天气查询")
-    public WeatherContext execute(OperationContext ctx, String userInput) {
-        WeatherContext result = new WeatherContext();
-        result.setOriginalInput(userInput);
-        String traceId = auditService.startTrace(userInput);
-        result.setTraceId(traceId);
-
-        try {
-            ParsedQuery parsed = auditParsedQuery(ctx, userInput, traceId);
-            result.setParsedQuery(parsed);
-            if (!parsed.isValid()) {
-                result.setErrorMessage("未能识别出城市名，请直接输入城市名，如「北京」");
-                return result;
-            }
-
-            GeoLocation geo = auditStep(traceId, 2, "geocode", parsed.cityName(),
-                    () -> geocode(ctx, parsed.cityName()),
-                    g -> g.name() + " (" + g.lat() + ", " + g.lon() + ")");
-            result.setCoordinates(geo);
-
-            List<DayForecast> forecasts = auditStep(traceId, 3, "forecast", geo.name(),
-                    () -> forecast(ctx, geo.lat(), geo.lon()),
-                    f -> f.size() + " 天数据");
-            result.setForecasts(forecasts);
-
-            String analysis = auditStep(traceId, 4, "analyze", parsed.cityName() + " 天气数据",
-                    () -> analyze(ctx, parsed, forecasts),
-                    a -> a != null ? a.substring(0, Math.min(a.length(), 60)) + "..." : "无分析");
-            result.setAiAnalysis(analysis);
-
-        } catch (IllegalArgumentException e) {
-            log.warn("[Agent] 城市未找到: {}", e.getMessage());
-            result.setErrorMessage(e.getMessage());
-        } catch (Exception e) {
-            log.error("[Agent] 执行异常", e);
-            result.setErrorMessage("天气查询暂时不可用，请稍后重试");
-        }
-
-        result.setAuditRecords(auditService.getTrace(traceId));
-        return result;
-    }
-
-    // ═══════════════════════════════════════════════
-    //  GOAP 子步骤
+    //  Action 1: 城市名提取
     // ═══════════════════════════════════════════════
 
     @Action(description = "从自然语言中提取城市名、时间和意图")
-    public ParsedQuery parseQuery(OperationContext ctx, String userInput) {
-        if (userInput == null || userInput.isBlank()) {
-            return ParsedQuery.unknown(userInput);
+    public ParsedQuery extractCity(OperationContext ctx, UserQuery query) {
+        String input = query.text();
+        long start = System.currentTimeMillis();
+        String traceId = getTraceId(ctx);
+
+        if (input == null || input.isBlank()) {
+            auditService.record(traceId, 1, "extractCity", input, null, 0, false, "输入为空");
+            return ParsedQuery.unknown(input);
         }
-        String trimmed = userInput.trim();
+
+        String trimmed = input.trim();
         if (isPlainCityName(trimmed)) {
-            return new ParsedQuery(trimmed, trimmed, "today", "forecast");
+            var result = new ParsedQuery(trimmed, trimmed, "today", "forecast");
+            auditService.record(traceId, 1, "extractCity", input,
+                    result.cityName() + " / " + result.timeContext() + " / " + result.intent(),
+                    System.currentTimeMillis() - start, true, null);
+            ctx.set("traceId", traceId);
+            return result;
         }
 
         String prompt = """
@@ -115,39 +78,95 @@ public class WeatherAgent {
 
                 以 JSON 格式返回：{"city": "...", "time": "...", "intent": "..."}
                 找不到对应字段则返回空字符串。
-                """.formatted(userInput);
+                """.formatted(input);
 
         try {
+            var ai = ctx.ai();
             String jsonText = ai.withDefaultLlm().generateText(prompt);
             JsonNode json = objectMapper.readTree(extractJson(jsonText));
             String city = getJsonText(json, "city");
             String time = getJsonText(json, "time");
             String intent = getJsonText(json, "intent");
-            if (city == null || city.isBlank()) {
-                return new ParsedQuery(userInput, trimmed, time, intent);
-            }
-            return new ParsedQuery(userInput, city, time, intent);
+            var result = (city == null || city.isBlank())
+                    ? new ParsedQuery(input, trimmed, time, intent)
+                    : new ParsedQuery(input, city, time, intent);
+
+            auditService.record(traceId, 1, "extractCity", input,
+                    result.cityName() + " / " + result.timeContext() + " / " + result.intent(),
+                    System.currentTimeMillis() - start, true, null);
+            return result;
         } catch (Exception e) {
             log.warn("[Agent] LLM 解析失败: {}", e.getMessage());
-            return new ParsedQuery(userInput, trimmed, "today", "forecast");
+            var result = new ParsedQuery(input, trimmed, "today", "forecast");
+            auditService.record(traceId, 1, "extractCity", input,
+                    result.cityName() + " / " + result.timeContext() + " / " + result.intent(),
+                    System.currentTimeMillis() - start, true, null);
+            return result;
         }
     }
 
+    // ═══════════════════════════════════════════════
+    //  Action 2: 地理编码
+    // ═══════════════════════════════════════════════
+
     @Action(description = "将城市名转换为经纬度坐标")
-    public GeoLocation geocode(OperationContext ctx, String cityName) {
-        return openWeatherClient.geocoding(cityName);
+    public GeoLocation geocode(OperationContext ctx, ParsedQuery parsed) {
+        long start = System.currentTimeMillis();
+        String traceId = getTraceId(ctx);
+        GeoLocation result = openWeatherClient.geocoding(parsed.cityName());
+        auditService.record(traceId, 2, "geocode", parsed.cityName(),
+                result.name() + " (" + result.lat() + ", " + result.lon() + ")",
+                System.currentTimeMillis() - start, true, null);
+        return result;
     }
+
+    // ═══════════════════════════════════════════════
+    //  Action 3: 天气预报
+    // ═══════════════════════════════════════════════
 
     @Action(description = "获取 3 天天气预报")
-    public List<DayForecast> forecast(OperationContext ctx, double lat, double lon) {
-        return openWeatherClient.forecast(lat, lon);
+    public List<DayForecast> forecast(OperationContext ctx, GeoLocation geo) {
+        long start = System.currentTimeMillis();
+        String traceId = getTraceId(ctx);
+        List<DayForecast> result = openWeatherClient.forecast(geo.lat(), geo.lon());
+        auditService.record(traceId, 3, "forecast", geo.name(),
+                result.size() + " 天数据", System.currentTimeMillis() - start, true, null);
+        return result;
     }
 
-    @Action(description = "生成 AI 天气分析和下雨提醒")
-    public String analyze(OperationContext ctx, ParsedQuery query, List<DayForecast> forecasts) {
-        if (forecasts == null || forecasts.isEmpty()) return null;
+    // ═══════════════════════════════════════════════
+    //  Goal: 最终回复
+    // ═══════════════════════════════════════════════
+
+    @Action
+    @AchievesGoal(description = "回答用户天气问题")
+    public WeatherQueryResult reply(OperationContext ctx, ParsedQuery parsed,
+                                     List<DayForecast> forecasts, Ai ai) {
+        long start = System.currentTimeMillis();
+        String traceId = getTraceId(ctx);
 
         boolean anyRain = forecasts.stream().anyMatch(DayForecast::hasRain);
+        String analysis = generateAnalysis(parsed, forecasts, ai, anyRain);
+
+        auditService.record(traceId, 4, "reply", parsed.cityName(),
+                analysis != null ? preview(analysis) : "无分析",
+                System.currentTimeMillis() - start, true, null);
+
+        String cityName = ctx.get("geocode") instanceof GeoLocation g
+                ? g.name() : parsed.cityName();
+
+        return new WeatherQueryResult(cityName, forecasts, anyRain, analysis,
+                false, System.currentTimeMillis() - start,
+                traceId, auditService.getTrace(traceId));
+    }
+
+    // ═══════════════════════════════════════════════
+    //  AI 分析
+    // ═══════════════════════════════════════════════
+
+    private String generateAnalysis(ParsedQuery query, List<DayForecast> forecasts,
+                                     Ai ai, boolean anyRain) {
+        if (forecasts == null || forecasts.isEmpty()) return null;
 
         String forecastText = forecasts.stream()
                 .map(d -> String.format("%s（%s）：%s，%d~%d°C%s",
@@ -184,49 +203,12 @@ public class WeatherAgent {
     }
 
     // ═══════════════════════════════════════════════
-    //  审计模板
-    // ═══════════════════════════════════════════════
-
-    /** parseQuery 特殊处理（含校验 + 错误审计） */
-    private ParsedQuery auditParsedQuery(OperationContext ctx, String userInput, String traceId) {
-        long start = System.currentTimeMillis();
-        try {
-            ParsedQuery parsed = parseQuery(ctx, userInput);
-            String output = parsed.cityName() + " / " + parsed.timeContext() + " / " + parsed.intent();
-            auditService.record(traceId, 1, "parseQuery", userInput, output,
-                    System.currentTimeMillis() - start, true, null);
-
-            if (!parsed.isValid()) {
-                auditService.record(traceId, 1, "parseQuery", userInput, null,
-                        System.currentTimeMillis() - start, false, "未能识别出城市名");
-            }
-            return parsed;
-        } catch (Exception e) {
-            auditService.record(traceId, 1, "parseQuery", userInput, null,
-                    System.currentTimeMillis() - start, false, e.getMessage());
-            throw e;
-        }
-    }
-
-    private <T> T auditStep(String traceId, int order, String stepName, String input,
-                            Supplier<T> action, Function<T, String> outputFormatter) {
-        long start = System.currentTimeMillis();
-        try {
-            T result = action.get();
-            auditService.record(traceId, order, stepName, input,
-                    outputFormatter.apply(result),
-                    System.currentTimeMillis() - start, true, null);
-            return result;
-        } catch (Exception e) {
-            auditService.record(traceId, order, stepName, input, null,
-                    System.currentTimeMillis() - start, false, e.getMessage());
-            throw e;
-        }
-    }
-
-    // ═══════════════════════════════════════════════
     //  工具方法
     // ═══════════════════════════════════════════════
+
+    private String getTraceId(OperationContext ctx) {
+        return ctx.getProcessContext().getAgentProcess().getId();
+    }
 
     private boolean isPlainCityName(String text) {
         if (text.length() < 2 || text.length() > 6) return false;
@@ -249,5 +231,10 @@ public class WeatherAgent {
     private String getJsonText(JsonNode node, String field) {
         JsonNode value = node.get(field);
         return value == null ? "" : value.asText("");
+    }
+
+    private static String preview(String text) {
+        if (text == null) return "无分析";
+        return text.substring(0, Math.min(text.length(), 60)) + "...";
     }
 }

@@ -49,7 +49,20 @@
       "Bash(javap -p com/embabel/agent/api/annotation/Action.class)",
       "Bash(javap -p com/embabel/agent/api/annotation/AchievesGoal.class)",
       "Bash(javap -p com/embabel/agent/api/annotation/Agent.class)",
-      "Bash(javap -p com/embabel/agent/api/common/OperationContext.class)"
+      "Bash(javap -p com/embabel/agent/api/common/OperationContext.class)",
+      "Bash(git clone *)",
+      "Bash(git ls-remote *)",
+      "Bash(rm -rf /tmp/embabel-tutorial && git clone --depth 1 --branch ch01/weather-agent https://github.com/zhangjessey/embabel-java-agent-tutorial.git /tmp/embabel-tutorial 2>&1 | tail -3)",
+      "Bash(javap -p com/embabel/agent/core/AgentPlatform.class)",
+      "Bash(javap -p com/embabel/agent/core/AgentProcess.class)",
+      "Bash(javap -p com/embabel/agent/core/ProcessOptions.class)",
+      "Bash(javap -p com/embabel/agent/core/AgentScope.class)",
+      "Bash(javap -p com/embabel/agent/core/Agent.class)",
+      "Bash(javap -p com/embabel/agent/core/Bindable.class)",
+      "Bash(javap -p com/embabel/agent/core/ProcessContext.class)"
+    ],
+    "additionalDirectories": [
+      "/tmp"
     ]
   }
 }
