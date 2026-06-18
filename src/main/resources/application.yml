@@ -35,15 +35,19 @@ embabel:
 
 # ── OpenTelemetry → Langfuse ──
 # 设置环境变量启用：
-#   OTEL_EXPORTER_OTLP_ENDPOINT=https://cloud.langfuse.com/api/public/otel
-#   OTEL_EXPORTER_OTLP_HEADERS=Authorization=Bearer base64(public_key:secret_key)
+#   LANGFUSE_PUBLIC_KEY=pk-lf-xxx
+#   LANGFUSE_SECRET_KEY=sk-lf-xxx
+#   (可选) LANGFUSE_ENDPOINT=https://cloud.langfuse.com/api/public/otel
 management:
   tracing:
     sampling:
       probability: 1.0
-  otlp:
-    tracing:
-      endpoint: ${OTEL_EXPORTER_OTLP_ENDPOINT:}
+  langfuse:
+    enabled: true
+    public-key: ${LANGFUSE_PUBLIC_KEY:}
+    secret-key: ${LANGFUSE_SECRET_KEY:}
+    endpoint: ${LANGFUSE_ENDPOINT:https://us.cloud.langfuse.com/api/public/otel}
+    embabel-only: true
 
 # ── OpenWeather API ──
 weather:
