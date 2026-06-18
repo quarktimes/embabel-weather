@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="zh-CN" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Embabel Weather</title>
+    <link rel="stylesheet" th:href="@{/css/style.css}">
+</head>
+<body>
+
+<div class="container">
+    <!-- 标题 -->
+    <header class="header">
+        <h1>🌤 Embabel Weather</h1>
+        <p class="subtitle">AI 智能天气预报</p>
+    </header>
+
+    <!-- 搜索表单 -->
+    <form class="search-form" th:action="@{/weather}" method="get">
+        <input type="text" name="q" class="search-input"
+               placeholder="输入城市名或问天气，如「明天上海下雨吗」"
+               th:value="${query}">
+        <button type="submit" class="search-btn">🔍 查询</button>
+    </form>
+
+    <!-- 空状态（首次访问，无查询） -->
+    <div class="empty-state" th:if="${query == null}">
+        <p class="empty-icon">🌤</p>
+        <p>输入城市名或天气问题，开始查询</p>
+        <p class="hint">例如：北京 / 明天上海会下雨吗？/ 深圳需要带伞吗</p>
+    </div>
+
+    <!-- 错误状态 -->
+    <div class="error-state" th:if="${error}">
+        <p class="error-text">⚠️ <span th:text="${error}">错误</span></p>
+    </div>
+
+    <!-- 查询结果（有 cityName 才算有效结果） -->
+    <div class="result-area" th:if="${result != null and !result.days.isEmpty()}">
+
+        <!-- 城市标题 -->
+        <div class="city-header">
+            <h2 th:text="${result.cityName}">城市</h2>
+            <span class="badge" th:if="${result.cached}">💾 缓存</span>
+        </div>
+        <p class="update-time" th:text="'3 天天气预报'">预报</p>
+
+        <!-- ⚠️ 下雨提醒 -->
+        <div class="rain-alert" th:if="${result.anyRain}">
+            <span class="alert-icon">🌂</span>
+            未来 3 天有雨，出门记得带伞！
+        </div>
+
+        <!-- 3 天预报卡片 -->
+        <div class="forecast-cards">
+            <div class="card" th:each="day : ${result.days}">
+                <p class="day-weekday" th:text="${day.weekday}">周一</p>
+                <p class="day-date" th:text="${day.date}">2026-06-17</p>
+                <img class="day-icon"
+                     th:src="'https://openweathermap.org/img/wn/' + ${day.icon} + '@2x.png'"
+                     th:alt="${day.weather}">
+                <p class="day-temp">
+                    <span class="temp-high" th:text="${day.tempMax} + '°'">30°</span>
+                    <span class="temp-sep">/</span>
+                    <span class="temp-low" th:text="${day.tempMin} + '°'">22°</span>
+                </p>
+                <p class="day-weather" th:text="${day.weather}">晴</p>
+                <p class="day-rain" th:if="${day.hasRain}">🌧 有雨</p>
+                <p class="day-no-rain" th:unless="${day.hasRain}">☀️ 无雨</p>
+            </div>
+        </div>
+
+        <!-- 🤖 AI 分析 -->
+        <div class="ai-section" th:if="${result.aiAnalysis != null}">
+            <div class="ai-header">🤖 AI 天气分析</div>
+            <p class="ai-text" th:text="${result.aiAnalysis}">分析文字</p>
+        </div>
+
+        <!-- 底部信息 -->
+        <div class="footer-info">
+            <span>数据来源: OpenWeather</span>
+            <span th:if="${result.aiAnalysis != null}">| AI: DeepSeek</span>
+            <span>| 耗时: <span th:text="${result.processingTimeMs} + 'ms'">0ms</span></span>
+        </div>
+    </div>
+
+    <!-- 结果为空且有查询（可能出错） -->
+    <div class="error-state" th:if="${result != null and result.days.isEmpty() and result.aiAnalysis != null and query != null}">
+        <p class="error-text">⚠️ <span th:text="${result.aiAnalysis}">错误信息</span></p>
+    </div>
+</div>
+
+</body>
+</html>
